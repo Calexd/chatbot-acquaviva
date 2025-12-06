@@ -16,7 +16,7 @@ load_dotenv()
 INDEX_NAME = "acquaviva-bot"
 CSV_PATH = "transcription_final.csv"
 EMBEDDING_MODEL = "text-embedding-3-small"
-LLM_MODEL = "gpt-4o"  # Fallback: gpt-3.5-turbo
+LLM_MODEL = "gpt-4o-mini"  # Fallback: gpt-3.5-turbo
 
 # Hardcoded Disclaimer
 DISCLAIMER = "\n\n> **Nota:** Esta respuesta se basa en transcripciones automáticas. Te recomiendo verificar el contexto escuchando el video original en el enlace proporcionado."
@@ -230,3 +230,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
