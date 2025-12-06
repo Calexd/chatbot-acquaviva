@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import uvicorn
 import chat
@@ -22,6 +23,21 @@ async def startup_event():
 @app.get("/")
 def health_check():
     return {"status": "Acquaviva Bot Active"}
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_policy():
+    return """
+    <html>
+        <head>
+            <title>Política de Privacidad</title>
+        </head>
+        <body>
+            <h1>Política de Privacidad</h1>
+            <p>El bot 'Acquaviva Expert' usa datos públicos para fines informativos y no guarda datos del usuario.</p>
+            <p>Contacto: contacto@ejemplo.com</p>
+        </body>
+    </html>
+    """
 
 @app.post("/chat", response_model=ChatResponse)
 def chat_endpoint(request: ChatRequest):
