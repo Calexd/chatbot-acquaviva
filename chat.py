@@ -3,11 +3,9 @@ import sys
 import pandas as pd
 from dotenv import load_dotenv
 
-# LangChain / Pinecone imports
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+# Pinecone imports
+from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
 
 # Load environment variables
 load_dotenv()
@@ -16,20 +14,14 @@ load_dotenv()
 INDEX_NAME = "acquaviva-bot"
 CSV_PATH = "transcription_final.csv"
 EMBEDDING_MODEL = "text-embedding-3-small"
-LLM_MODEL = "gpt-4o-mini"  # Fallback: gpt-3.5-turbo
-
-# Hardcoded Disclaimer
-DISCLAIMER = "\n\n> **Nota:** Esta respuesta se basa en transcripciones automáticas. Te recomiendo verificar el contexto escuchando el video original en el enlace proporcionado."
 
 # Global Variables for Caching
 df = None
 vectorstore = None
-llm = None
-prompt = None
 
 def init_resources():
     """Initializes global resources if they haven't been loaded yet."""
-    global df, vectorstore, llm, prompt
+    global df, vectorstore
     
     if df is not None:
         return  # Already initialized
@@ -43,13 +35,12 @@ def init_resources():
         print(f"CSV loaded. Rows: {len(df)}")
     except Exception as e:
         print(f"Error loading CSV: {e}")
-        # In a real app, maybe raise or fail, but specifically for now we print and maybe let it fail later or exit if script
         if __name__ == "__main__":
             sys.exit(1)
         else:
             raise e
 
-    # 2. Setup Pinecone & LangChain
+    # 2. Setup Pinecone
     if not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OPENAI_API_KEY missing.")
     if not os.getenv("PINECONE_API_KEY"):
@@ -63,43 +54,14 @@ def init_resources():
         embedding=embeddings
     )
     
-    llm = ChatOpenAI(model=LLM_MODEL, temperature=0.7)
-
-    # 3. Define Prompt with Temporal Rules
-    template = """You are an expert AI assistant specialized in the content of this YouTuber.
-    Mantén la personalidad de 'Experto analista'.
-    
-    Instrucciones Clave:
-    1. Matices: Distingue cuándo habla el autor y cuándo lee a terceros para no atribuirle opiniones falsas.
-    2. Contexto Temporal: Presta extrema atención a la fecha del video ([Fecha Video: ...]).
-       - Si el youtuber usa palabras como "hoy", "recientemente", "ahora" o "esta semana", DEBES transformarlas a la fecha real del video.
-       - Incorrecto: "Dice que hoy hay una crisis..."
-       - Correcto: "En el video de abril de 2024, menciona que en ese momento había una crisis..."
-    
-    Answer the user's question based ONLY on the following context fragments.
-    
-    The context below contains 'Expanded Context' blocks. The line marked with '>>>' is the direct match.
-    
-    CRITICAL CITATION RULE:
-    If you use information from a context fragment, you MUST cite the source by providing the exact YouTube link provided in the context frame.
-    Format the link exactly as: https://youtu.be/VIDEO_ID?t=START_TIME
-    Do not make up links. Use the 'Source' field provided.
-    
-    Context:
-    {context}
-    
-    Question: {question}
-    
-    Answer:"""
-    
-    prompt = ChatPromptTemplate.from_template(template)
-    print("Resources initialized.")
+    print("Resources initialized (Retrieval Only).")
 
 
-def get_expanded_context(video_id, start_time, window=3):
+def get_expanded_text(video_id, start_time, window=3):
     """
     Finds the row in the DataFrame matching video_id and start_time,
     retrieves surrounding rows (±window), and injects the video date.
+    Returns the raw combined text.
     """
     global df
     if df is None:
@@ -110,12 +72,9 @@ def get_expanded_context(video_id, start_time, window=3):
         matches = df[(df['video_id'] == video_id) & (df['inicio'] == start_time)]
         
         if matches.empty:
-            return f"Context expansion failed: Row not found for {video_id} at {start_time}"
+            return "" # Fail silently for raw data
             
         target_idx = matches.index[0]
-        
-        # Get Date
-        video_date = matches.iloc[0]['fecha_publicacion']
         
         # Calculate window bounds
         start_idx = max(0, target_idx - window)
@@ -124,41 +83,39 @@ def get_expanded_context(video_id, start_time, window=3):
         # Extract slice
         context_slice = df.iloc[start_idx:end_idx]
         
-        # Concatenate text with marker
+        # Concatenate text
         expanded_text_lines = []
         for _, row in context_slice.iterrows():
-            marker = ">>> " if row.name == target_idx else "    "
-            expanded_text_lines.append(f"{marker}{row['texto']}")
+            expanded_text_lines.append(row['texto'])
             
         # Join lines
         concat_text = "\n".join(expanded_text_lines)
         
-        # Inject Date Header as requested
-        final_block = f"[Fecha Video: {video_date}] Texto: \"{concat_text}\""
-        
-        return final_block
+        return concat_text
 
     except Exception as e:
-        return f"Error expanding context: {e}"
+        print(f"Error expanding context: {e}")
+        return ""
 
-def retrieve_and_format(query, vectorstore_instance, k=5):
+def retrieve_raw_chunks(query, vectorstore_instance, k=8):
     """
-    Retrieves documents from Pinecone, expands context using Pandas, and formats for the LLM.
+    Retrieves documents from Pinecone and returns structured data.
     """
     # 1. Similarity Search
     docs = vectorstore_instance.similarity_search(query, k=k)
     
-    formatted_contexts = []
+    results = []
     
     for doc in docs:
         meta = doc.metadata
         vid = meta.get('video_id')
         start = meta.get('inicio')
+        fecha = meta.get('fecha_publicacion', '')
         
-        # 2. Expand Context using Pandas (Includes Date Injection)
-        expanded_content = get_expanded_context(vid, start)
+        # 2. Expand Context using Pandas
+        expanded_text = get_expanded_text(vid, start)
         
-        # Prepare Citation Link
+        # Prepare URL
         try:
             start_seconds = int(float(start))
         except:
@@ -166,45 +123,39 @@ def retrieve_and_format(query, vectorstore_instance, k=5):
         
         link = f"https://youtu.be/{vid}?t={start_seconds}"
         
-        # 3. Build Block
-        block = (
-            f"--- RESULT ---\n"
-            f"Source: {link}\n"
-            f"Expanded Context:\n{expanded_content}\n"
-        )
-        formatted_contexts.append(block)
+        # 3. Build Dict
+        result_item = {
+            "texto": expanded_text if expanded_text else doc.page_content,
+            "fecha": fecha,
+            "video_id": vid,
+            "url": link
+        }
+        results.append(result_item)
         
-    return "\n\n".join(formatted_contexts)
+    return results
 
-def get_acquaviva_response(question: str) -> str:
+def get_acquaviva_response(question: str) -> list:
     """
-    Main entry point for getting a response from the bot.
-    Ensures resources are initialized, then searches and answers.
+    Main entry point.
+    Returns a list of dictionaries with raw retrieved data.
     """
     init_resources()
     
     try:
-        # Custom Retrieval + Generation
-        context_str = retrieve_and_format(question, vectorstore, k=5)
-        
-        # Direct chain invoke manually
-        chain_input = {"context": context_str, "question": question}
-        messages = prompt.format_messages(**chain_input)
-        response = llm.invoke(messages)
-        
-        # Append Disclaimer
-        final_response = response.content + DISCLAIMER
-        return final_response
+        # Raw Retrieval
+        results = retrieve_raw_chunks(question, vectorstore, k=8)
+        return results
         
     except Exception as e:
-        return f"Error processing request: {str(e)}"
+        print(f"Error processing request: {str(e)}")
+        return []
 
 def main():
     """Legacy CLI interface"""
-    print("Starting CLI mode...")
+    print("Starting CLI mode (Retrieval Only)...")
     init_resources()
     
-    print("\nSystem Ready (Pinecone Cloud)! Ask questions. Type 'salir' to exit.\n")
+    print("\nSystem Ready! Ask questions to see retrieved chunks. Type 'salir' to exit.\n")
     print("-" * 50)
 
     while True:
@@ -216,11 +167,12 @@ def main():
                 print("Goodbye!")
                 break
                 
-            print("\nSearching and Thinking...\n")
+            print("\nSearching...\n")
             
-            response = get_acquaviva_response(query)
+            results = get_acquaviva_response(query)
             
-            print(f"AI: {response}\n")
+            import json
+            print(json.dumps(results, indent=2, ensure_ascii=False))
             print("-" * 50)
             
         except KeyboardInterrupt:
@@ -230,4 +182,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
