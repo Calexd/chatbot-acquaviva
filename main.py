@@ -1,3 +1,4 @@
+from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -12,7 +13,7 @@ class ChatRequest(BaseModel):
 
 # Response Model
 class ChatResponse(BaseModel):
-    response: str
+    results: List[Dict[str, Any]]
 
 @app.on_event("startup")
 async def startup_event():
@@ -22,7 +23,7 @@ async def startup_event():
 
 @app.get("/")
 def health_check():
-    return {"status": "Acquaviva Bot Active"}
+    return {"status": "Acquaviva Bot Active (Raw Mode)"}
 
 @app.get("/privacy", response_class=HTMLResponse)
 def privacy_policy():
@@ -46,8 +47,9 @@ def chat_endpoint(request: ChatRequest):
     
     try:
         # Import and use the refactored function
-        response_text = chat.get_acquaviva_response(request.message)
-        return ChatResponse(response=response_text)
+        # Now returns a list of dictionaries
+        raw_results = chat.get_acquaviva_response(request.message)
+        return ChatResponse(results=raw_results)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
