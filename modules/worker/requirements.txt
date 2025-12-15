@@ -1,0 +1,11 @@
+numpy
+torch
+torchaudio
+openai-whisper
+ffmpeg-python
+python-dotenv
+pinecone-client
+langchain
+langchain-openai
+langchain-pinecone
+git+https://github.com/m-bain/whisperx.git
