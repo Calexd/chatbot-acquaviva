@@ -41,7 +41,7 @@ def init_resources():
     except Exception as e:
         print(f"❌ Error conectando a Pinecone: {e}")
 
-def get_acquaviva_response(query: str, k: int = 8) -> list:
+def get_acquaviva_response(query: str, k: int = 10) -> list:
     """
     Recibe la pregunta, busca en Pinecone y devuelve una lista de resultados.
     NOTA: Aumentamos k a 8 para darle más contexto a la IA.
@@ -79,10 +79,11 @@ def get_acquaviva_response(query: str, k: int = 8) -> list:
 
 def generate_complete_answer(query: str) -> str:
     """
-    Genera una respuesta completa usando gpt-4o-mini con el PROMPT EXPERTO.
+    Genera una respuesta completa usando gpt-4o-mini.
+    AQUÍ USAMOS k=40 PARA LEER MUCHO CONTEXTO (Server-side power).
     """
-    # 1. Recuperar contexto
-    results = get_acquaviva_response(query)
+    # 1. Recuperar contexto CON SUPERPODERES (k=40)
+    results = get_acquaviva_response(query, k=40)
     
     if not results:
         return "Lo siento, no estoy disponible ahora por falla del sistema o mantenimiento, intentalo de nuevo en unos minutos."
