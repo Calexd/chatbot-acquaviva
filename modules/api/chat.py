@@ -1,6 +1,7 @@
 import os
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
+from openai import OpenAI
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
@@ -74,6 +75,42 @@ def get_acquaviva_response(query: str, k: int = 6) -> list:
     except Exception as e:
         print(f"⚠️ Error en búsqueda: {e}")
         return []
+
+def generate_complete_answer(query: str) -> str:
+    """
+    Genera una respuesta completa usando gpt-4o-mini basado en el contexto recuperado.
+    """
+    # 1. Recuperar contexto (lista de dicts)
+    results = get_acquaviva_response(query)
+    
+    # 2. Concatenar texto
+    context_str = "\n\n".join([r["texto"] for r in results])
+    
+    if not context_str:
+        return "Lo siento, no encontré información relevante en la base de datos para responder tu pregunta."
+
+    # 3. Invocar a OpenAI
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    
+    system_prompt = (
+        "Eres el asistente IA de John Acquaviva. Responde a la pregunta del usuario basándote "
+        "EXCLUSIVAMENTE en el siguiente contexto proporcionado. Si la respuesta no está en el contexto, "
+        "di que no tienes esa información. El contexto es:\n"
+        f"{context_str}"
+    )
+
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": query}
+            ]
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        print(f"❌ Error generando respuesta con OpenAI: {e}")
+        return "Hubo un error al generar la respuesta."
 
 if __name__ == "__main__":
     # Prueba rápida local
