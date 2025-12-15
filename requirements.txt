@@ -1,3 +1,11 @@
+fastapi
+uvicorn
 python-dotenv
-black
-ipykernel
+langchain
+langchain-openai
+langchain-pinecone
+pinecone-client
+openai
+feedparser
+requests
+pydantic
