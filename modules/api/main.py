@@ -2,7 +2,7 @@ from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 import uvicorn
-import chat # Importamos nuestro nuevo chat.py limpio
+from . import chat
 import os
 
 app = FastAPI(title="Acquaviva Chatbot API", description="API RAG Serverless")
