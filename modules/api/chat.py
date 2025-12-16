@@ -38,11 +38,16 @@ def get_acquaviva_response(query: str, k: int = 8) -> list:
         results = []
         for doc, score in docs_and_scores:
             meta = doc.metadata
+            # AQUÍ ESTÁ LA CLAVE: Recuperamos el 'orador' de los metadatos
+            # Si no existe etiqueta, asumimos 'Video' para no culpar a John falsamente.
+            orador = meta.get("orador", "Desconocido") 
+            
             results.append({
                 "texto": doc.page_content, 
                 "titulo": meta.get("titulo", "Video"),
                 "fecha": meta.get("fecha", "?"),
-                "url": meta.get("url", "#"), 
+                "url": meta.get("url", "#"),
+                "orador": orador, # <--- Nuevo campo vital
                 "score": float(score)
             })
         return results
@@ -51,54 +56,49 @@ def get_acquaviva_response(query: str, k: int = 8) -> list:
         return []
 
 def generate_complete_answer(query: str) -> str:
-    # 1. Búsqueda con K ALTO para el Bot (Server-side)
+    # 1. Búsqueda Server-side (k=40)
     results = get_acquaviva_response(query, k=40)
     
     if not results:
         return "Lo siento, no tengo información sobre eso en la base de datos."
 
-    # 2. Construir contexto
+    # 2. Construir contexto CON NOMBRE DEL ORADOR
     context_parts = []
     for r in results:
-        context_parts.append(f"- Fecha: {r['fecha']} | URL: {r['url']}\n  Texto: {r['texto']}")
+        # Le decimos a la IA explícitamente quién habla en cada frase
+        context_parts.append(
+            f"--- FRAGMENTO ---\n"
+            f"Orador: {r['orador']}\n"
+            f"Fecha: {r['fecha']} | URL: {r['url']}\n"
+            f"Contenido: {r['texto']}\n"
+        )
     
     context_str = "\n".join(context_parts)
 
-    # 3. PROMPT "PERIODISTA DIGITAL" (Estructura Visual y Markdown)
+    # 3. PROMPT ANTICONFUSIÓN
     system_prompt = """
-    Eres el Asistente IA de John Acquaviva. Tu objetivo es responder dudas usando SU contenido, pero no dar juicios de valor, 
-    ni tienes la última palabra ya que la información puede contener errores asi que invita siempre a ver la fuente original.
+    Eres el Asistente IA de John Acquaviva.
     
-    DATOS: Recibes transcripciones con Fecha y URL.
+    IMPORTANTE SOBRE LOS ORADORES:
+    Recibirás transcripciones donde se indica el 'Orador'.
+    - Si el Orador es 'John Acquaviva' (o similar), es la opinión directa de John.
+    - Si el Orador es OTRO (ej: 'Invitado', 'Video Reacción', 'Entrevistado'), NO atribuyas esa opinión a John.
+    - Debes aclarar: "Un invitado mencionó..." o "En un video que John analizaba, se dijo...".
     
-    ESTILO DE RESPUESTA (IMPORTANTE):
-    - NO uses bloques de texto gigantes. Nadie lee eso.
-    - Usa **Negritas** para resaltar las ideas clave o frases contundentes de John.
-    - Usa Emojis de forma moderada para listar puntos (ej: 📌, 🗣️, 📅, ⚠️).
-    - Estructura tu respuesta en párrafos cortos o listas (bullet points).
+    ESTILO DE RESPUESTA:
+    - Periodístico, directo y estructurado.
+    - Usa **Negritas** para resaltar ideas.
+    - Usa Emojis (📌, 🗣️, ⚠️) con moderación.
     
     REGLAS DE LINKS:
-    - Es OBLIGATORIO citar las fuentes.
-    - Usa formato Markdown estricto para los links.
-    - Formato correcto: `[Ver video 🎥](URL)` o `[Fuente 🔗](URL)`.
-    - Nunca pongas la URL suelta. Intégrala en el texto o al final de la frase.
-
-    REGLAS DE CONTENIDO:
-    - Detecta ironía y sarcasmo. Si John se burla, dilo.
-    - Prioriza la opinión más reciente (mira las fechas).
-    - Si critica y luego apoya, explica ese cambio cronológicamente.
-
-    EJEMPLO DE FORMATO DESEADO:
-    "Según los videos más recientes, la postura de John es clara:
+    - Cita obligatoria en formato Markdown: `[Ver video 🎥](URL)`.
     
-    📌 **Sobre el tema X:** Opina que es un error estratégico.
-    🗣️ Mencionó que 'es una locura' confiar en ellos `[Ver video 🎥](URL)`.
-    
-    Sin embargo, en 2023 pensaba diferente, lo que muestra una evolución..."
+    CONTENIDO:
+    - Si John critica algo pero un invitado lo apoya, haz la distinción clara.
+    - Prioriza la fecha más reciente de John.
 
-    DISCLAIMER FINAL:
-    Al final, añade en cursiva:
-    "_Respuesta generada por IA, puedo cometer errores. Verifica el contexto en los links._"
+    DISCLAIMER:
+    "_Respuesta generada por IA. Verifica el contexto en los links._"
     """
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -108,7 +108,7 @@ def generate_complete_answer(query: str) -> str:
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Pregunta: {query}\n\nContexto:\n{context_str}"}
+                {"role": "user", "content": f"Pregunta: {query}\n\nContexto Clasificado:\n{context_str}"}
             ]
         )
         return completion.choices[0].message.content
