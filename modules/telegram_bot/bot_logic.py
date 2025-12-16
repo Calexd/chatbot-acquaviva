@@ -45,7 +45,7 @@ def register_handlers(bot_instance):
             
             # Telegram soporta Markdown, pero a veces falla con caracteres raros. 
             # Enviamos texto plano o HTML simple si quieres.
-            bot_instance.reply_to(message, respuesta)
+            bot_instance.reply_to(message, respuesta, parse_mode='Markdown')
             
         except Exception as e:
             bot_instance.reply_to(message, "⚠️ Tuve un problema procesando tu pregunta.")
