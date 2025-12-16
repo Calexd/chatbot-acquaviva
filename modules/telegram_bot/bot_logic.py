@@ -1,50 +1,59 @@
 import telebot
 import os
 from dotenv import load_dotenv
-from modules.api import chat  # Importamos tu cerebro experto directamente
+from modules.api import chat
 
 # Cargar entorno
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-bot = telebot.TeleBot(TOKEN)
+# Verificación de seguridad
+if TOKEN:
+    bot = telebot.TeleBot(TOKEN)
+else:
+    bot = None
 
 def register_handlers(bot_instance):
     """
-    Aquí definimos cómo responde el bot.
-    Esta función se llamará desde main.py al iniciar el servidor.
+    Definimos cómo responde el bot.
     """
     
     @bot_instance.message_handler(commands=['start', 'help'])
     def send_welcome(message):
-        bot_instance.reply_to(message, "¡Hola! Soy la IA experta en contenido de John Acquaviva. Mencióname o responde a mis mensajes para preguntarme algo.")
+        bot_instance.reply_to(message, "¡Hola! Soy la IA de John Acquaviva. Mencióname o responde a mis mensajes para preguntarme algo.")
 
-    # Maneja mensajes de texto (Privados o Menciones en Grupos)
-    @bot_instance.message_handler(func=lambda message: True)
+    # --- FILTRO DE SEGURIDAD ---
+    # content_types=['text'] -> Ignora fotos, audios, stickers, videos.
+    @bot_instance.message_handler(func=lambda message: True, content_types=['text'])
     def handle_message(message):
-        # Filtro para grupos: ¿Es privado O me están mencionando/respondiendo?
+        # 1. Filtro para grupos
         is_private = message.chat.type == 'private'
-        is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot_instance.get_me().id
-        is_mention = f"@{bot_instance.get_me().username}" in message.text
         
-        # Si es grupo y NO me hablan a mí, ignoro para no ser spam
+        is_reply_to_bot = message.reply_to_message and \
+                          message.reply_to_message.from_user.username == bot_instance.get_me().username
+        
+        bot_name = bot_instance.get_me().username
+        is_mention = f"@{bot_name}" in message.text
+        
         if not is_private and not (is_reply_to_bot or is_mention):
             return
 
         user_id = message.from_user.id
-        pregunta = message.text.replace(f"@{bot_instance.get_me().username}", "").strip()
+        # Limpieza del mensaje
+        pregunta = message.text.replace(f"@{bot_name}", "").strip()
         
-        print(f"📩 Mensaje de {user_id} en {message.chat.type}: {pregunta}")
+        if not pregunta:
+            return
 
-        # Acción "Escribiendo..."
+        print(f"📩 Texto recibido de {user_id}: {pregunta}")
+
         bot_instance.send_chat_action(message.chat.id, 'typing')
 
         try:
-            # USAMOS LA FUNCIÓN EXPERTA DIRECTAMENTE (Sin requests HTTP extra)
+            # Llamamos a la IA con el nuevo Prompt Híbrido
             respuesta = chat.generate_complete_answer(pregunta)
             
-            # Telegram soporta Markdown, pero a veces falla con caracteres raros. 
-            # Enviamos texto plano o HTML simple si quieres.
+            # Respondemos con Markdown
             bot_instance.reply_to(message, respuesta, parse_mode='Markdown')
             
         except Exception as e:

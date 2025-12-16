@@ -4,10 +4,8 @@ from langchain_pinecone import PineconeVectorStore
 from openai import OpenAI
 from dotenv import load_dotenv
 
-# Cargar variables de entorno
 load_dotenv()
 
-# Configuración
 INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "acquaviva-index") 
 EMBEDDING_MODEL = "text-embedding-3-small"
 
@@ -15,8 +13,7 @@ vectorstore = None
 
 def init_resources():
     global vectorstore
-    if vectorstore is not None:
-        return
+    if vectorstore is not None: return
 
     print("🔄 Conectando a Pinecone...")
     api_key = os.getenv("PINECONE_API_KEY")
@@ -29,7 +26,7 @@ def init_resources():
     except Exception as e:
         print(f"❌ Error: {e}")
 
-def get_acquaviva_response(query: str, k: int = 8) -> list:
+def get_acquaviva_response(query: str, k: int = 10) -> list:
     init_resources()
     if vectorstore is None: return []
 
@@ -38,8 +35,6 @@ def get_acquaviva_response(query: str, k: int = 8) -> list:
         results = []
         for doc, score in docs_and_scores:
             meta = doc.metadata
-            # AQUÍ ESTÁ LA CLAVE: Recuperamos el 'orador' de los metadatos
-            # Si no existe etiqueta, asumimos 'Video' para no culpar a John falsamente.
             orador = meta.get("orador", "Desconocido") 
             
             results.append({
@@ -47,7 +42,7 @@ def get_acquaviva_response(query: str, k: int = 8) -> list:
                 "titulo": meta.get("titulo", "Video"),
                 "fecha": meta.get("fecha", "?"),
                 "url": meta.get("url", "#"),
-                "orador": orador, # <--- Nuevo campo vital
+                "orador": orador,
                 "score": float(score)
             })
         return results
@@ -56,16 +51,15 @@ def get_acquaviva_response(query: str, k: int = 8) -> list:
         return []
 
 def generate_complete_answer(query: str) -> str:
-    # 1. Búsqueda Server-side (k=40)
+    # Usamos k=40 para tener mucho contexto y detectar evolución
     results = get_acquaviva_response(query, k=40)
     
     if not results:
         return "Lo siento, no tengo información sobre eso en la base de datos."
 
-    # 2. Construir contexto CON NOMBRE DEL ORADOR
+    # Construcción del contexto con ORADORES explícitos
     context_parts = []
     for r in results:
-        # Le decimos a la IA explícitamente quién habla en cada frase
         context_parts.append(
             f"--- FRAGMENTO ---\n"
             f"Orador: {r['orador']}\n"
@@ -75,27 +69,31 @@ def generate_complete_answer(query: str) -> str:
     
     context_str = "\n".join(context_parts)
 
-    # 3. PROMPT ANTICONFUSIÓN
+    # --- PROMPT HÍBRIDO SUPREMO ---
     system_prompt = """
-    Eres el Asistente IA de John Acquaviva.
-    
-    IMPORTANTE SOBRE LOS ORADORES:
-    Recibirás transcripciones donde se indica el 'Orador'.
-    - Si el Orador es 'John Acquaviva' (o similar), es la opinión directa de John.
-    - Si el Orador es OTRO (ej: 'Invitado', 'Video Reacción', 'Entrevistado'), NO atribuyas esa opinión a John.
-    - Debes aclarar: "Un invitado mencionó..." o "En un video que John analizaba, se dijo...".
-    
+    Eres el Analista Experto oficial del contenido de John Acquaviva. Tu función es responder preguntas basándote EXCLUSIVAMENTE en los datos proporcionados.
+
+    CRÍTICO: GESTIÓN DE ORADORES
+    - Si el 'Orador' es John Acquaviva, es su opinión.
+    - Si el 'Orador' es OTRO (Invitado, Video Reacción), NO se la atribuyas a John. Debes decir: "Un invitado mencionó..." o "John reaccionaba a un video donde se dijo...".
+
+    REGLA DE ORO: CITAS INMEDIATAS (ESTILO CHATGPT)
+    - Cada vez que hagas una afirmación, debes respaldarla INMEDIATAMENTE con su enlace.
+    - NO pongas una lista de links al final. Pon el link justo después de la frase.
+    - Formato Markdown OBLIGATORIO: `[Fuente 🔗](URL)`.
+
     ESTILO DE RESPUESTA:
-    - Periodístico, directo y estructurado.
-    - Usa **Negritas** para resaltar ideas.
-    - Usa Emojis (📌, 🗣️, ⚠️) con moderación.
+    - Periodístico, directo y estructurado con **Negritas**.
+    - Usa Emojis (📌, 🗣️, 📅) para separar puntos.
+    - Detecta Ironía: Si John se burla, indícalo ("Posiblemente en tono irónico...").
+    - Evolución: Si antes criticaba y ahora apoya (mira las fechas), explica el cambio cronológico.
+
+    EJEMPLO PERFECTO:
+    "Según los registros, la postura de John es mixta:
     
-    REGLAS DE LINKS:
-    - Cita obligatoria en formato Markdown: `[Ver video 🎥](URL)`.
+    📌 **Sobre el tema A:** En 2023 lo criticaba duramente, llamándolo 'una estafa' `[Fuente 🔗](URL_VIDEO_1)`.
     
-    CONTENIDO:
-    - Si John critica algo pero un invitado lo apoya, haz la distinción clara.
-    - Prioriza la fecha más reciente de John.
+    🗣️ **Cambio de opinión:** Sin embargo, en un video reciente (2025), un invitado mencionó que podría funcionar `[Fuente 🔗](URL_VIDEO_2)` y John pareció coincidir `[Fuente 🔗](URL_VIDEO_3)`."
 
     DISCLAIMER:
     "_Respuesta generada por IA. Verifica el contexto en los links._"
