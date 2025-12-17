@@ -1,5 +1,6 @@
 from typing import List, Dict, Any
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Security, Depends
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 import uvicorn
 import telebot
@@ -23,6 +24,17 @@ else:
 # Si no existe (error de config), usamos una ruta genérica pero segura.
 WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "telegram_webhook")
 
+# --- SEGURIDAD API KEY ---
+API_KEY_NAME = "X-API-KEY"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def get_api_key(api_key: str = Security(api_key_header)):
+    # Valor por defecto 'dev_secret_key' para desarrollo local si no hay env
+    secret_key = os.getenv("API_SECRET_KEY", "dev_secret_key")
+    if api_key == secret_key:
+        return api_key
+    raise HTTPException(status_code=403, detail="Credenciales inválidas")
+
 class ChatRequest(BaseModel):
     message: str
 
@@ -42,7 +54,7 @@ def health_check():
     return {"status": "Online", "service": "Acquaviva Knowledge Base"}
 
 # --- ENDPOINTS EXISTENTES (NO TOCAR) ---
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(get_api_key)])
 def chat_endpoint(request: ChatRequest):
     if not request.message:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
@@ -53,7 +65,7 @@ def chat_endpoint(request: ChatRequest):
         print(f"Error API: {e}")
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
-@app.post("/bot_response", response_model=BotResponse)
+@app.post("/bot_response", response_model=BotResponse, dependencies=[Depends(get_api_key)])
 def bot_endpoint(request: ChatRequest):
     if not request.message:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
