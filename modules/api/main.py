@@ -19,9 +19,9 @@ else:
     bot = None
 
 # --- CONFIGURACIÓN DE SEGURIDAD (WEBHOOK SECRET) ---
-# Aquí definimos el nombre de la "puerta secreta".
-# Si no configuras nada en Render, usará "telegram_webhook_secreto_v1" por defecto.
-WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "telegram_webhook_secreto_v1")
+# Ahora leemos EXCLUSIVAMENTE de la variable de entorno.
+# Si no existe (error de config), usamos una ruta genérica pero segura.
+WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "telegram_webhook")
 
 class ChatRequest(BaseModel):
     message: str
