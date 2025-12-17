@@ -96,7 +96,8 @@ def generate_complete_answer(query: str) -> str:
     🗣️ **Cambio de opinión:** Sin embargo, en un video reciente (2025), un invitado mencionó que podría funcionar `[Fuente 🔗](URL_VIDEO_2)` y John pareció coincidir `[Fuente 🔗](URL_VIDEO_3)`."
 
     DISCLAIMER:
-    "_Respuesta generada por IA. Verifica el contexto en los links._"
+    "_Solo tengo acceso actualmente al todo el canal principal (John Acquaviva), al canal secundario (John Patrick Acquaviva) y al los livestream en el canal de Recortes (Acquaviva Recortes). 
+    Mis respuestas son generadas por IA. Puedo cometer errores, verifica el contexto en los links._"
     """
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
