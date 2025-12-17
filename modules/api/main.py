@@ -5,15 +5,23 @@ import uvicorn
 import telebot
 from . import chat
 import os
-from modules.telegram_bot import bot_logic # Importamos la lógica del bot
+from modules.telegram_bot import bot_logic
 
 app = FastAPI(title="Acquaviva Chatbot API", description="API RAG Serverless + Telegram Bot")
 
 # --- CONFIGURACIÓN TELEGRAM ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-bot = telebot.TeleBot(TOKEN)
-# Cargamos las reglas de respuesta (handlers)
-bot_logic.register_handlers(bot)
+# Verificación de seguridad para evitar error si no hay token (local)
+if TOKEN:
+    bot = telebot.TeleBot(TOKEN)
+    bot_logic.register_handlers(bot)
+else:
+    bot = None
+
+# --- CONFIGURACIÓN DE SEGURIDAD (WEBHOOK SECRET) ---
+# Aquí definimos el nombre de la "puerta secreta".
+# Si no configuras nada en Render, usará "telegram_webhook_secreto_v1" por defecto.
+WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "telegram_webhook_secreto_v1")
 
 class ChatRequest(BaseModel):
     message: str
@@ -28,10 +36,6 @@ class BotResponse(BaseModel):
 async def startup_event():
     print("🚀 Arrancando API y Recursos...")
     chat.init_resources()
-    # Configurar Webhook automáticamente al iniciar (Opcional pero útil)
-    # url_webhook = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/telegram_webhook"
-    # bot.remove_webhook()
-    # bot.set_webhook(url=url_webhook)
 
 @app.get("/")
 def health_check():
@@ -60,12 +64,16 @@ def bot_endpoint(request: ChatRequest):
         print(f"Error API /bot_response: {e}")
         return BotResponse(response="Ocurrió un error al procesar tu solicitud.")
 
-# --- NUEVO ENDPOINT PARA TELEGRAM (WEBHOOK) ---
-@app.post(f"/telegram_webhook")
+# --- NUEVO ENDPOINT SEGURO PARA TELEGRAM ---
+# Fíjate que ahora la ruta no es fija, usa la variable WEBHOOK_PATH
+@app.post(f"/{WEBHOOK_PATH}")
 async def process_webhook(request: Request):
     """
     Aquí Telegram envía los mensajes nuevos.
     """
+    if not bot:
+        return {"status": "error", "message": "Bot no inicializado"}
+        
     json_str = await request.json()
     update = telebot.types.Update.de_json(json_str)
     bot.process_new_updates([update])

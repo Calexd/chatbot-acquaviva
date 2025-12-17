@@ -65,8 +65,15 @@ def register_handlers(bot_instance):
             if user_rate_limit[user_id][1] == MAX_MESSAGES_PER_MINUTE + 1:
                 bot_instance.reply_to(message, "⚠️ Estás preguntando muy rápido. Espera un minuto.")
             return
-
-        # 2. Filtros de grupo y menciones (Lógica original)
+        
+        # 2. VERIFICACIÓN DE LONGITUD (NUEVO)
+        MAX_CHAR_LIMIT = 500  # Nadie necesita más de 500 letras para preguntar algo
+        if len(message.text) > MAX_CHAR_LIMIT:
+            bot_instance.reply_to(message, "⚠️ Tu mensaje es muy largo. Por favor, resume tu pregunta (Máximo 500 caracteres).")
+            print(f"🚫 Mensaje rechazado por longitud ({len(message.text)} chars)")
+            return
+        
+        # 3. Filtros de grupo y menciones (Lógica original)
         is_private = message.chat.type == 'private'
         is_reply_to_bot = message.reply_to_message and \
                           message.reply_to_message.from_user.username == bot_instance.get_me().username
