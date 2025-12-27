@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException, Request, Security, Depends
 from fastapi.security import APIKeyHeader
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import telebot
@@ -9,6 +10,14 @@ import os
 from modules.telegram_bot import bot_logic
 
 app = FastAPI(title="Acquaviva Chatbot API", description="API RAG Serverless + Telegram Bot")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permite acceso desde cualquier IP/Dominio
+    allow_credentials=True,
+    allow_methods=["*"],  # Permite todos los métodos (POST, GET, OPTIONS)
+    allow_headers=["*"],  # Permite todos los headers (incluyendo X-API-KEY)
+)
 
 # --- CONFIGURACIÓN TELEGRAM ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
